@@ -1,0 +1,44 @@
+name: Bug report
+description: Something doesn't work or the installer refuses to patch a new Claude Code version
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: claude
+    attributes:
+      label: Claude Code extension version
+      placeholder: "2.1.301"
+    validations:
+      required: true
+  - type: input
+    id: editor
+    attributes:
+      label: Editor and version
+      placeholder: "Cursor 1.128 / VS Code 1.105 / Windsurf …"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: Output of the installer
+      description: Run `npx -y github:n1ghtmare-dev/claude-code-queue-mode --status` (or `install.bat --status`) and paste the output. If installing failed, paste that output too.
+      render: text
+  - type: textarea
+    id: console
+    attributes:
+      label: Errors from the webview (optional)
+      description: "Developer: Toggle Developer Tools → Console, filter by `claude-queue`."
+      render: text

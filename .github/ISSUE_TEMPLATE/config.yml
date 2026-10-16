@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Feature idea or question
+    url: https://github.com/n1ghtmare-dev/claude-code-queue-mode/discussions
+    about: Ideas, questions and show-and-tell

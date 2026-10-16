@@ -1,0 +1,50 @@
+{
+  "name": "claude-code-queue-mode",
+  "version": "1.0.0",
+  "description": "Codex-style follow-up queue for the Claude Code extension in Cursor and VS Code: queue, steer or interrupt while Claude is working.",
+  "bin": {
+    "claude-code-queue-mode": "src/patch.js"
+  },
+  "files": [
+    "src/",
+    "install.sh",
+    "uninstall.sh",
+    "install.bat",
+    "uninstall.bat",
+    "install.ps1"
+  ],
+  "scripts": {
+    "install-patch": "node src/patch.js",
+    "uninstall-patch": "node src/patch.js --unpatch",
+    "status": "node src/patch.js --status",
+    "check": "node --check src/patch.js && node --check src/queue-runtime.js && node --check scripts/build.js",
+    "build": "node scripts/build.js --dist"
+  },
+  "keywords": [
+    "claude-code",
+    "claude",
+    "anthropic",
+    "cursor",
+    "vscode",
+    "codex",
+    "queue",
+    "message-queue",
+    "follow-up",
+    "steer",
+    "ai-coding",
+    "productivity"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/n1ghtmare-dev/claude-code-queue-mode.git"
+  },
+  "homepage": "https://github.com/n1ghtmare-dev/claude-code-queue-mode#readme",
+  "bugs": {
+    "url": "https://github.com/n1ghtmare-dev/claude-code-queue-mode/issues"
+  },
+  "author": "n1ghtmare-dev",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.14"
+  }
+}

@@ -14,7 +14,7 @@ const cp = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const NAME = 'claude-code-queue-mode';
-const DIST_FILES = ['README.md', 'README.ru.md', 'LICENSE', 'CHANGELOG.md', 'install.bat', 'uninstall.bat', 'install.ps1', 'install.sh', 'uninstall.sh', 'package.json', 'src/patch.js', 'src/queue-runtime.js'];
+const DIST_FILES = ['README.md', 'README.ru.md', 'LICENSE', 'CHANGELOG.md', 'install.bat', 'uninstall.bat', 'install.ps1', 'install.sh', 'uninstall.sh', 'package.json', 'src/patch.js', 'src/queue-runtime.js', 'src/activity.js', 'src/taskbar.ps1'];
 
 function bat(args) {
   return [

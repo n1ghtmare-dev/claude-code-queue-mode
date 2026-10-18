@@ -24,10 +24,12 @@ const path = require('path');
 const cp = require('child_process');
 const crypto = require('crypto');
 
-const PATCH_VERSION = '1.0.0';
+const PATCH_VERSION = '1.1.0';
 const REPO_URL = 'https://github.com/n1ghtmare-dev/claude-code-queue-mode';
 const RUNTIME_FILE = 'queue-runtime.js';
 const PAYLOAD_DIR = 'claude-queue';
+// Copied into <extension>/claude-queue/ so the patched extension can use them and re-patch updates.
+const PAYLOAD_FILES = ['patch.js', RUNTIME_FILE, 'activity.js', 'taskbar.ps1'];
 const MARKER_RE = /^\/\*claude-queue-patch ([^*]*)\*\//;
 const BACKUP = '.cq-orig';
 const EDITOR_DIRS = [
@@ -59,6 +61,8 @@ const MESSAGES = {
     syntax: 'syntax error after patching: {0}',
     warnReload: 'changing the mode in Settings will apply after "Reload Window"',
     warnMenu: 'the "Turn off/on queueing" menu item will not be able to save the setting',
+    warnActivity: 'the working indicator and notifications are not available in this Claude Code version',
+    warnTitle: 'the ⏳ mark in the chat tab title will be lost when Claude renames the chat',
     autoDone: 'Claude Code was updated to {0} — Queue Mode has been carried over. Reload the window to switch to the new version.',
     autoFailed: 'Claude Code was updated to {0}, but Queue Mode could not be carried over: {1}. Run the installer again; if that does not help, the patch needs an update.',
     reloadButton: 'Reload Window',
@@ -84,6 +88,8 @@ const MESSAGES = {
     syntax: 'синтаксическая ошибка после патча: {0}',
     warnReload: 'смена режима в настройках подхватится только после Reload Window',
     warnMenu: 'пункт меню «Turn off/on queueing» не сможет сохранить настройку',
+    warnActivity: 'индикатор работы и уведомления недоступны в этой версии Claude Code',
+    warnTitle: 'значок ⏳ в названии вкладки будет пропадать, когда Claude переименует чат',
     autoDone: 'Claude Code обновился до {0} — режим очереди перенесён на новую версию. Перезагрузи окно, чтобы она включилась.',
     autoFailed: 'Claude Code обновился до {0}, но режим очереди перенести не удалось: {1}. Запусти установщик ещё раз; если не поможет — патч нужно обновить.',
     reloadButton: 'Reload Window',
@@ -119,8 +125,7 @@ function readRuntime(srcDir) {
 // Version plus a hash of the patch sources: re-running a changed patch re-applies it.
 function patchId(srcDir) {
   const h = crypto.createHash('sha1');
-  h.update(readRuntime(srcDir));
-  h.update(fs.readFileSync(path.join(srcDir, 'patch.js')));
+  for (const f of PAYLOAD_FILES) h.update(fs.readFileSync(path.join(srcDir, f)));
   return PATCH_VERSION + ' ' + h.digest('hex').slice(0, 8);
 }
 
@@ -165,7 +170,7 @@ function patchedIdOf(dir) {
 function isFullyPatched(dir, id) {
   return patchedIdOf(dir) === id &&
     FILES.every((f) => fs.existsSync(path.join(dir, f + BACKUP))) &&
-    fs.existsSync(path.join(dir, PAYLOAD_DIR, RUNTIME_FILE));
+    PAYLOAD_FILES.every((f) => fs.existsSync(path.join(dir, PAYLOAD_DIR, f)));
 }
 
 // ------------------------------------------------------------------ patches
@@ -189,7 +194,12 @@ const HOST_HELPERS =
   'Promise.resolve(__cqVscode.workspace.getConfiguration("claudeCode").update("followUpQueueMode",m,__cqVscode.ConfigurationTarget.Global))' +
   '.then(void 0,function(e){console.error("[claude-queue] could not save followUpQueueMode",e)})}catch(e){console.error("[claude-queue]",e)}}' +
   'setTimeout(function(){try{var f=require("path").join(__dirname,"' + PAYLOAD_DIR + '","patch.js");' +
-  'if(require("fs").existsSync(f))require(f).startAutoPatch(__dirname,require("vscode"))}catch(e){console.error("[claude-queue] auto-patch",e)}},15000);';
+  'if(require("fs").existsSync(f))require(f).startAutoPatch(__dirname,require("vscode"))}catch(e){console.error("[claude-queue] auto-patch",e)}},15000);' +
+  // Working indicator and notifications (activity.js), fed by Claude Code's own chat state reports.
+  'var __cqActInst=null;' +
+  'function __cqAct(){if(!__cqActInst)__cqActInst=require(require("path").join(__dirname,"' + PAYLOAD_DIR + '","activity.js")).get(require("vscode"),__dirname);return __cqActInst}' +
+  'function __cqActivity(q,o){try{__cqAct().update(q,o)}catch(e){console.error("[claude-queue] activity",e)}}' +
+  'function __cqTabTitle(o,t){try{return __cqAct().tabTitle(o,t)}catch(e){return t}}';
 
 function patchHost(src, id, warnings) {
   if (MARKER_RE.test(src)) throw new Error(t('alreadyPatched', 'extension.js'));
@@ -210,6 +220,16 @@ function patchHost(src, id, warnings) {
   if (caseRe.test(out)) out = out.replace(caseRe, 'case"cq_set_mode":__cqSetMode($1.mode);break;$&');
   else warnings.push(t('warnMenu'));
 
+  // 4. Forward each chat's state ("running" / "waiting_input" / "idle") to activity.js.
+  const stateRe = /\.request\.type==="update_session_state"\)\{let ([\w$]+)=[\w$]+\([\w$]+\.request\);if\(\1\)\{/;
+  if (stateRe.test(out)) out = out.replace(stateRe, '$&__cqActivity($1,this);');
+  else warnings.push(t('warnActivity'));
+
+  // 5. Keep the "⏳" prefix when Claude Code renames the chat tab.
+  const titleRe = /this\.panelTab\.title=([\w$]+)\(([\w$]+)\.request\.title\)/;
+  if (titleRe.test(out)) out = out.replace(titleRe, 'this.panelTab.title=__cqTabTitle(this,$1($2.request.title))');
+  else warnings.push(t('warnTitle'));
+
   return marker(id) + HOST_HELPERS + '\n' + out;
 }
 
@@ -228,18 +248,43 @@ const SETTING = {
     '_Added by [Claude Code Queue Mode](' + REPO_URL + ')._'
 };
 
+const EXTRA_SETTINGS = {
+  'claudeCode.workingIndicator': {
+    type: 'boolean',
+    default: true,
+    markdownDescription:
+      'Show when Claude is working: `⏳` before the chat tab title (so it also shows in the window title and on the taskbar), ' +
+      '`✋` while it waits for your answer, and on Windows a progress bar on the taskbar button. ' +
+      '_Added by [Claude Code Queue Mode](' + REPO_URL + ')._'
+  },
+  'claudeCode.notifyWhenDone': {
+    type: 'string',
+    enum: ['whenUnfocused', 'always', 'off'],
+    enumDescriptions: [
+      'Notify only when this editor window is not in focus.',
+      'Always notify.',
+      'Never notify.'
+    ],
+    default: 'whenUnfocused',
+    markdownDescription:
+      'Show a notification when Claude finishes or needs your answer. On Windows it is a system notification; ' +
+      'clicking it brings this editor window back. _Added by [Claude Code Queue Mode](' + REPO_URL + ')._'
+  }
+};
+
 function patchManifest(src) {
   const pkg = JSON.parse(src);
   const conf = pkg.contributes && pkg.contributes.configuration;
   const section = Array.isArray(conf) ? conf.find((c) => c && c.properties && c.properties['claudeCode.useCtrlEnterToSend']) || conf[0] : conf;
   if (!section || !section.properties) throw new Error(t('noManifestSection'));
+  const ours = Object.assign({ 'claudeCode.followUpQueueMode': SETTING }, EXTRA_SETTINGS);
   const props = {};
   for (const [k, v] of Object.entries(section.properties)) {
-    if (k === 'claudeCode.followUpQueueMode') continue;
+    if (ours[k]) continue;
     props[k] = v;
-    if (k === 'claudeCode.useCtrlEnterToSend') props['claudeCode.followUpQueueMode'] = SETTING;
+    if (k === 'claudeCode.useCtrlEnterToSend') Object.assign(props, ours);
   }
-  if (!props['claudeCode.followUpQueueMode']) props['claudeCode.followUpQueueMode'] = SETTING;
+  if (!props['claudeCode.followUpQueueMode']) Object.assign(props, ours);
   section.properties = props;
   return JSON.stringify(pkg, null, 2) + '\n';
 }
@@ -299,7 +344,7 @@ function commit(dir, srcDir, out) {
   }
   const payload = path.join(dir, PAYLOAD_DIR);
   fs.mkdirSync(payload, { recursive: true });
-  for (const f of ['patch.js', RUNTIME_FILE]) fs.copyFileSync(path.join(srcDir, f), path.join(payload, f));
+  for (const f of PAYLOAD_FILES) fs.copyFileSync(path.join(srcDir, f), path.join(payload, f));
 }
 
 function patchDirSync(dir, srcDir) {

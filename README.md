@@ -30,6 +30,7 @@ The Codex extension solves this with a **follow-up queue**. This project adds th
 - ✏️ Edit, reorder (drag & drop), delete or "steer now" any queued message.
 - ⏸️ Pressing Stop / Esc pauses the queue; **Resume** continues it.
 - 💾 The queue is kept per chat, with images and editor selections, and survives a window reload.
+- ⏳ See that Claude is working from any app: an hourglass in the window title and a progress bar on the taskbar button, plus a Windows notification when it's done or needs your answer.
 - 🔄 Survives Claude Code updates: the patch re-applies itself to new versions automatically.
 
 ## Install
@@ -109,13 +110,33 @@ You can also switch between queue and steer from the `⋯` menu of any queued me
 
 If **Use Ctrl+Enter to send** is on, sending is <kbd>Ctrl</kbd>+<kbd>Enter</kbd> and the opposite action is <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd>. Hover the send button while Claude works to see both.
 
+## Know when Claude is done
+
+You don't have to keep an eye on the chat. Switch to another app or step away; each editor window shows its own state:
+
+| | What you see |
+|---|---|
+| Claude is working | `⏳` before the chat title, so it shows on the tab, in the window title and on the taskbar button; on Windows also a running green bar on the button |
+| Claude needs your answer | `✋` and a yellow bar, plus a notification |
+| Claude is done | the taskbar button turns orange until you open the window, and a notification arrives; click it to jump back to that window |
+
+<img src="docs/taskbar.png" alt="Taskbar button with a green progress bar while Claude works and orange when it is done" width="430">
+<img src="docs/notification.png" alt="Windows notification: Claude finished" width="372">
+
+| Setting | |
+|---|---|
+| `claudeCode.workingIndicator` | `true` (default) / `false`: the `⏳` mark and the taskbar progress |
+| `claudeCode.notifyWhenDone` | `whenUnfocused` (default): only if you're not looking at that window · `always` · `off` |
+
+The taskbar bar and system notifications are Windows-only; on macOS and Linux you get the `⏳` mark and an editor notification. Notifications are skipped for the few seconds it takes a queued follow-up to start, so a queue of five messages gives you one notification at the end.
+
 ## FAQ
 
 **Is this an extension?**
 No. It's a small patch for the Claude Code extension you already have. The installer edits three files inside its folder (`~/.cursor/extensions/anthropic.claude-code-*` or the VS Code equivalent) and keeps the originals next to them as `*.cq-orig`.
 
 **Is it safe?**
-The patch only touches local files, makes no network requests and collects nothing. Every change is checked for syntax errors before it is written, and if Claude Code's code doesn't look the way the patch expects, it refuses to install and leaves the files alone. `--unpatch` restores the originals.
+The patch only touches local files, makes no network requests and collects nothing. On Windows the notifications come from a PowerShell helper that the patched extension starts only while it needs it. Every change is checked for syntax errors before it is written, and if Claude Code's code doesn't look the way the patch expects, it refuses to install and leaves the files alone. `--unpatch` restores the originals.
 
 **Which Claude Code versions are supported?**
 Developed and tested with Claude Code **2.1.301** in Cursor on Windows. The queue logic doesn't depend on minified names, so it should survive most updates; if an update breaks it, the installer will say so — please [open an issue](https://github.com/n1ghtmare-dev/claude-code-queue-mode/issues/new/choose).
@@ -140,13 +161,15 @@ npx -y github:n1ghtmare-dev/claude-code-queue-mode --status
 ## Under the hood
 
 - `src/queue-runtime.js` is injected into Claude Code's webview. It finds the chat session through React's own data, wraps its `send` / `interrupt` methods and renders the queue above the composer. No minified identifiers are hard-coded.
-- `src/patch.js` registers the `claudeCode.followUpQueueMode` setting, passes it to the webview, lets the webview save it, and copies itself into the extension so newer Claude Code versions installed next to it get patched automatically.
+- `src/patch.js` registers the settings, passes the mode to the webview, lets the webview save it, and copies itself into the extension so newer Claude Code versions installed next to it get patched automatically.
+- `src/activity.js` listens to the chat state reports Claude Code already sends to its extension host (`running` / `waiting_input` / `idle`) and drives the `⏳` mark and notifications.
+- `src/taskbar.ps1` is a small PowerShell helper (one per window, started on demand) that sets the taskbar progress through `ITaskbarList3`, flashes the button and shows the notification under the editor's own app id. It's compiled once and cached in `%LOCALAPPDATA%\claude-queue`.
 
 ## Contributing
 
 Issues and pull requests are welcome. When reporting a problem, include your editor, OS, Claude Code version and the output of `--status`.
 
-Useful commands: `npm run check` (syntax), `npm run status`, `node scripts/build.js --dist` (release archives).
+Useful commands: `npm test`, `npm run check` (syntax), `npm run status`, `node scripts/build.js --dist` (release archives). Start the editor with `CLAUDE_QUEUE_DEBUG=1` to log the working indicator to `%TEMP%\claude-queue-activity.log`.
 
 ## Disclaimer
 

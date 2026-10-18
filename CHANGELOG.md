@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0 — 2026-10-18
+
+Know when Claude is done without watching the chat.
+
+- `⏳` before the chat title while Claude works and `✋` while it waits for your answer; it shows on the tab, in the window title and on the taskbar button.
+- Windows: a running green bar on the editor window's taskbar button while Claude works, yellow while it waits for you, and the button turns orange when it's done.
+- Windows notification when Claude finishes or needs your answer, sent as the editor itself; clicking it brings back the right window. One notification for a whole queue.
+- New settings: `claudeCode.workingIndicator`, `claudeCode.notifyWhenDone` (`whenUnfocused` by default, `always`, `off`).
+- Notification texts follow the editor language, or the Windows regional format when the editor is in English.
+- `CLAUDE_QUEUE_DEBUG=1` logs the indicator to `%TEMP%\claude-queue-activity.log`.
+- Unit tests: `npm test`.
+
 ## 1.0.0 — 2026-10-16
 
 First release.

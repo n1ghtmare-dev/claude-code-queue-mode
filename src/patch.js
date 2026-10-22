@@ -24,7 +24,7 @@ const path = require('path');
 const cp = require('child_process');
 const crypto = require('crypto');
 
-const PATCH_VERSION = '1.1.0';
+const PATCH_VERSION = '1.1.1';
 const REPO_URL = 'https://github.com/n1ghtmare-dev/claude-code-queue-mode';
 const RUNTIME_FILE = 'queue-runtime.js';
 const PAYLOAD_DIR = 'claude-queue';

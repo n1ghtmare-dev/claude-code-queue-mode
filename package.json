@@ -1,6 +1,6 @@
 {
   "name": "claude-code-queue-mode",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Codex-style follow-up queue for the Claude Code extension in Cursor and VS Code: queue, steer or interrupt while Claude is working.",
   "bin": {
     "claude-code-queue-mode": "src/patch.js"

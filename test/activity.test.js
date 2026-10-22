@@ -1,31 +1,56 @@
 // Unit tests for src/activity.js with a fake vscode API and a fake taskbar helper.
-// Run: node --test test/
+// Run: npm test
 'use strict';
 
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
+
+// Keep the "title template added" flag away from the real home folder.
+const stateFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'cq-test-')), 'state.json');
+process.env.CLAUDE_QUEUE_STATE_FILE = stateFile;
+process.env.CLAUDE_QUEUE_LANG = 'en';
 
 function load() {
   delete require.cache[require.resolve('../src/activity.js')];
   return require('../src/activity.js');
 }
 
+const DEFAULT_TITLE = '${dirty}${activeEditorShort}${separator}${rootName}${separator}${appName}';
+
 function fakeVscode(opts = {}) {
   const settings = Object.assign({ workingIndicator: true, notifyWhenDone: 'whenUnfocused' }, opts.settings);
+  const title = { defaultValue: DEFAULT_TITLE, globalValue: opts.windowTitle };
   const shown = [];
+  const calls = [];
+  const focusListeners = [];
   return {
     shown,
+    calls,
+    title,
+    focus(focused) { this.window.state.focused = focused; focusListeners.forEach((f) => f({ focused })); },
+    windowMark() {
+      const set = calls.filter((c) => c[0] === 'setContext' && c[1] === 'claudeQueue.activity');
+      return set.length ? set[set.length - 1][2] : '';
+    },
     env: { language: 'en', appName: 'Cursor', uriScheme: 'cursor' },
+    ConfigurationTarget: { Global: 1 },
+    commands: {
+      executeCommand: (...args) => { calls.push(args); return Promise.resolve(); }
+    },
     window: {
       state: { focused: !!opts.focused },
-      onDidChangeWindowState: () => ({ dispose() {} }),
+      onDidChangeWindowState: (f) => { focusListeners.push(f); return { dispose() {} }; },
       showInformationMessage: (m) => shown.push(m)
     },
     workspace: {
       name: 'demo',
       workspaceFolders: [{ uri: { scheme: 'file', fsPath: 'C:\\work\\demo' } }],
-      getConfiguration: () => ({ get: (k, d) => (k in settings ? settings[k] : d) }),
+      getConfiguration: (section) => section === 'window'
+        ? { inspect: () => Object.assign({}, title), update: (k, v) => { title.globalValue = v; return Promise.resolve(); } }
+        : { get: (k, d) => (k in settings ? settings[k] : d) },
       onDidChangeConfiguration: () => ({ dispose() {} })
     }
   };
@@ -141,6 +166,56 @@ test('renames keep the prefix, and the indicator can be turned off', () => {
   assert.strictEqual(b.tabTitle(p, '⏳ Renamed chat'), '⏳ Renamed chat', 'never doubles the prefix');
 });
 
+test('the window title variable shows ⏳ / ✋ and ✓ until you come back to the window', async () => {
+  const vscode = fakeVscode();
+  const a = load().get(vscode, 'C:/ext');
+  withFakeHelper(a);
+  await a.titleReady;
+  assert.deepStrictEqual(vscode.calls[0], ['registerWindowTitleVariable', 'claudeActivity', 'claudeQueue.activity']);
+
+  a.update({ sessionId: 's1', state: 'running', title: 'T' }, owner());
+  await a.titleReady; await wait(0);
+  assert.strictEqual(vscode.windowMark(), '⏳ ');
+  a.update({ sessionId: 's1', state: 'waiting_input', title: 'T' }, owner());
+  await wait(0);
+  assert.strictEqual(vscode.windowMark(), '✋ ');
+  a.update({ sessionId: 's1', state: 'running', title: 'T' }, owner());
+  a.update({ sessionId: 's1', state: 'idle', title: 'T' }, owner());
+  await wait(2700);
+  assert.strictEqual(vscode.windowMark(), '✓ ', 'done while you were away');
+  vscode.focus(true);
+  await wait(0);
+  assert.strictEqual(vscode.windowMark(), '', 'cleared once you look at the window');
+});
+
+test('the title template is extended once, only when it does not show the active editor', async () => {
+  fs.rmSync(stateFile, { force: true });
+  let vscode = fakeVscode();               // default title shows ${activeEditorShort}: leave it alone
+  load().get(vscode, 'C:/ext').update({ sessionId: 's1', state: 'running', title: 'T' }, owner());
+  await wait(10);
+  assert.strictEqual(vscode.title.globalValue, undefined);
+
+  const custom = '${codexActivity}${rootName}${separator}${appName}';
+  vscode = fakeVscode({ windowTitle: custom });
+  load().get(vscode, 'C:/ext').update({ sessionId: 's1', state: 'running', title: 'T' }, owner());
+  await wait(10);
+  assert.strictEqual(vscode.title.globalValue, '${claudeActivity}' + custom);
+
+  vscode = fakeVscode({ windowTitle: custom }); // the user removed it again: don't fight
+  load().get(vscode, 'C:/ext').update({ sessionId: 's1', state: 'running', title: 'T' }, owner());
+  await wait(10);
+  assert.strictEqual(vscode.title.globalValue, custom);
+});
+
+test('focusing the window re-captures it without looking at its title', () => {
+  const vscode = fakeVscode();
+  const a = load().get(vscode, 'C:/ext');
+  const sent = withFakeHelper(a);
+  a.update({ sessionId: 's1', state: 'running', title: 'T' }, owner());
+  vscode.focus(true);
+  assert.deepStrictEqual(sent.filter((m) => m.cmd === 'capture').pop(), { cmd: 'capture', name: 'demo', any: true });
+});
+
 test('the helper script exists next to activity.js', () => {
-  require('fs').accessSync(path.join(__dirname, '..', 'src', 'taskbar.ps1'));
+  fs.accessSync(path.join(__dirname, '..', 'src', 'taskbar.ps1'));
 });

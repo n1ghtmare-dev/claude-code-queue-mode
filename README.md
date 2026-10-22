@@ -116,9 +116,9 @@ You don't have to keep an eye on the chat. Switch to another app or step away; e
 
 | | What you see |
 |---|---|
-| Claude is working | `⏳` before the chat title, so it shows on the tab, in the window title and on the taskbar button; on Windows also a running green bar on the button |
+| Claude is working | `⏳` in the window title (so on the taskbar button too) and before the chat tab title; on Windows also a running green bar on the button |
 | Claude needs your answer | `✋` and a yellow bar, plus a notification |
-| Claude is done | the taskbar button turns orange until you open the window, and a notification arrives; click it to jump back to that window |
+| Claude is done | `✓` in the window title and an orange taskbar button until you come back to the window, and a notification; click it to jump back to that window |
 
 <img src="docs/taskbar.png" alt="Taskbar button with a green progress bar while Claude works and orange when it is done" width="430">
 <img src="docs/notification.png" alt="Windows notification: Claude finished" width="372">
@@ -127,6 +127,8 @@ You don't have to keep an eye on the chat. Switch to another app or step away; e
 |---|---|
 | `claudeCode.workingIndicator` | `true` (default) / `false`: the `⏳` mark and the taskbar progress |
 | `claudeCode.notifyWhenDone` | `whenUnfocused` (default): only if you're not looking at that window · `always` · `off` |
+
+The mark in the window title is the `${claudeActivity}` title variable. With the default title it is not needed (the window title already includes the chat tab); if your `window.title` doesn't show the active editor, the patch puts `${claudeActivity}` in front of it once. Remove it from the setting if you don't want it, and it won't come back.
 
 The taskbar bar and system notifications are Windows-only; on macOS and Linux you get the `⏳` mark and an editor notification. Notifications are skipped for the few seconds it takes a queued follow-up to start, so a queue of five messages gives you one notification at the end.
 

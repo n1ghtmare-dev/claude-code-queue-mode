@@ -1,8 +1,9 @@
 # Claude Code Queue Mode - Windows taskbar and notification helper.
 #
 # Started by activity.js, one per editor window. Reads JSON commands, one per line, on stdin:
-#   {"cmd":"capture","needle":" - name - "}   -> answers {"hwnd":N} for the foreground editor window (title must contain needle)
-#   {"cmd":"find","needle":" - name - "}      -> answers {"hwnd":N} for the only editor window whose title contains needle
+#   {"cmd":"capture","name":"ws","any":false} -> answers {"hwnd":N} for the foreground editor window
+#                                               (its title must contain the workspace name unless "any")
+#   {"cmd":"find","name":"ws"}                -> answers {"hwnd":N} for the only editor window titled with that workspace
 #   {"cmd":"progress","hwnd":N,"state":"running|waiting|none"}
 #   {"cmd":"flash","hwnd":N}
 #   {"cmd":"toast","title":"...","body":"...","launch":"cursor://file/..."}
@@ -65,26 +66,36 @@ public static class CqTaskbar {
     } catch { return false; }
   }
 
-  // The foreground window, if it belongs to the editor and (when given) its title contains needle.
-  public static long Foreground(string processName, string needle) {
+  // True when the window title contains the workspace name as a separate word group:
+  // "file.ts - name - Cursor", "name - Cursor", "* name - Cursor" all match, "name2 - Cursor" does not.
+  static bool TitleHasName(IntPtr hwnd, string name) {
+    if (string.IsNullOrEmpty(name)) return false;
+    var sb = new StringBuilder(1024);
+    GetWindowText(hwnd, sb, sb.Capacity);
+    string title = sb.ToString();
+    int i = 0;
+    while ((i = title.IndexOf(name, i, StringComparison.OrdinalIgnoreCase)) >= 0) {
+      int end = i + name.Length;
+      if ((i == 0 || title[i - 1] == ' ') && (end == title.Length || title[end] == ' ')) return true;
+      i = end;
+    }
+    return false;
+  }
+
+  // The foreground editor window; unless any is set, only if its title carries the workspace name.
+  public static long Foreground(string processName, string name, bool any) {
     IntPtr h = GetForegroundWindow();
     if (h == IntPtr.Zero || !IsEditor(h, processName)) return 0;
-    if (!string.IsNullOrEmpty(needle)) {
-      var sb = new StringBuilder(1024);
-      GetWindowText(h, sb, sb.Capacity);
-      if (sb.ToString().IndexOf(needle, StringComparison.OrdinalIgnoreCase) < 0) return 0;
-    }
+    if (!any && !TitleHasName(h, name)) return 0;
     return h.ToInt64();
   }
 
-  public static long FindByTitle(string processName, string needle) {
+  // The only visible editor window whose title carries the workspace name.
+  public static long FindByName(string processName, string name) {
     long found = 0;
     int count = 0;
     EnumWindows(delegate (IntPtr h, IntPtr l) {
-      if (!IsWindowVisible(h)) return true;
-      var sb = new StringBuilder(1024);
-      GetWindowText(h, sb, sb.Capacity);
-      if (sb.ToString().IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0 && IsEditor(h, processName)) { found = h.ToInt64(); count++; }
+      if (IsWindowVisible(h) && TitleHasName(h, name) && IsEditor(h, processName)) { found = h.ToInt64(); count++; }
       return true;
     }, IntPtr.Zero);
     return count == 1 ? found : 0;
@@ -165,8 +176,8 @@ try {
     try {
       $m = $line | ConvertFrom-Json
       switch ($m.cmd) {
-        'capture' { Reply @{ hwnd = [CqTaskbar]::Foreground($processName, [string]$m.needle) } }
-        'find' { Reply @{ hwnd = [CqTaskbar]::FindByTitle($processName, [string]$m.needle) } }
+        'capture' { Reply @{ hwnd = [CqTaskbar]::Foreground($processName, [string]$m.name, [bool]$m.any) } }
+        'find' { Reply @{ hwnd = [CqTaskbar]::FindByName($processName, [string]$m.name) } }
         'progress' {
           $hwnd = [long]$m.hwnd
           [CqTaskbar]::Progress($hwnd, [string]$m.state)

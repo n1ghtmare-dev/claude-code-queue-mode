@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1 — 2026-10-22
+
+- Fixed: the taskbar progress and the orange "done" button didn't appear when `window.title` doesn't contain the active editor (for example `${rootName}${separator}${appName}`). The helper now finds the window by the workspace name anywhere in the title, and re-captures it whenever the window gets focus.
+- The window title shows `⏳` / `✋` through a new `${claudeActivity}` title variable, so it works whatever tab is active; it's added to a custom `window.title` once if needed.
+- `✓` in the window title after Claude finishes, until you come back to that window.
+
 ## 1.1.0 — 2026-10-18
 
 Know when Claude is done without watching the chat.
